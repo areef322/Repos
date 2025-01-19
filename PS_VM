@@ -1,0 +1,80 @@
+
+# Define Variables
+$resourceGroup = "MyResourceGroup"
+$location = "EastUS"
+$vnetName = "MyVNet"
+$subnetName = "MySubnet"
+$vnetAddressSpace = "10.0.0.0/16"
+$subnetAddressRange = "10.0.1.0/24"
+$vmSize = "Standard_B2s"
+$adminUsername = "AzureAdmin"
+$adminPassword = "P@ssw0rd123!"
+$bootDiagnosticsStorageAccount = "mybootdiagstorageacct"
+$bootDiagnosticsContainer = "bootdiagnostics"
+
+# Login to Azure
+# Connect-AzAccount
+
+# Ensure Resource Group exists
+if (-not (Get-AzResourceGroup -Name $resourceGroup -ErrorAction SilentlyContinue)) {
+    Write-Host "Creating Resource Group..."
+    New-AzResourceGroup -Name $resourceGroup -Location $location
+}
+
+# Ensure Virtual Network and Subnet exist
+if (-not (Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup -ErrorAction SilentlyContinue)) {
+    Write-Host "Creating Virtual Network and Subnet..."
+    New-AzVirtualNetwork `
+        -ResourceGroupName $resourceGroup `
+        -Location $location `
+        -Name $vnetName `
+        -AddressPrefix $vnetAddressSpace `
+        -Subnet @(@{Name = $subnetName; AddressPrefix = $subnetAddressRange})
+}
+
+# Retrieve Subnet ID
+$subnetId = (Get-AzVirtualNetwork -Name $vnetName -ResourceGroupName $resourceGroup).Subnets[0].Id
+
+
+# Create NSG with RDP and HTTP rules
+$nsgRuleRDP = New-AzNetworkSecurityRuleConfig -Name RDP  -Protocol Tcp  -Direction Inbound -Priority 1001 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 3389 -Access Allow
+$nsgRuleHTTP = New-AzNetworkSecurityRuleConfig -Name HTTP  -Protocol Tcp  -Direction Inbound -Priority 1002 -SourceAddressPrefix * -SourcePortRange * -DestinationAddressPrefix * -DestinationPortRange 80 -Access Allow
+
+# Create NSG with both RDP and HTTP rules
+$nsg = New-AzNetworkSecurityGroup -ResourceGroupName $resourceGroup -Location $location -Name "$vnetName-NSG" -SecurityRules $nsgRuleRDP, $nsgRuleHTTP
+
+# Loop to create multiple VMs
+for ($i = 1; $i -le 2; $i++) {
+    $vmName = "VM$i"
+    Write-Host "Deploying VM: $vmName"
+
+    # Create Public IP Address
+    $publicIp = New-AzPublicIpAddress `
+        -ResourceGroupName $resourceGroup `
+        -Name "$vmName-PIP" `
+        -Location $location `
+        -Sku Standard `
+        -AllocationMethod Static
+
+    # Create Network Interface
+    $nic = New-AzNetworkInterface `
+        -Name "$vmName-NIC" `
+        -ResourceGroupName $resourceGroup `
+        -Location $location `
+        -SubnetId $subnetId `
+        -PublicIpAddressId $publicIp.Id
+
+    # Associate NSG with the NIC
+    $nic.NetworkSecurityGroup = $nsg
+    $nic | Set-AzNetworkInterface
+
+    # Configure VM
+    $vmConfig = New-AzVMConfig -VMName $vmName -VMSize $vmSize | `
+        Set-AzVMOperatingSystem -Windows -ComputerName $vmName -Credential (New-Object -TypeName PSCredential -ArgumentList $adminUsername, (ConvertTo-SecureString $adminPassword -AsPlainText -Force)) | `
+        Set-AzVMSourceImage -PublisherName "MicrosoftWindowsServer" -Offer "WindowsServer" -Skus "2019-Datacenter" -Version "latest" | `
+        Add-AzVMNetworkInterface -Id $nic.Id 
+    # Create the VM
+    New-AzVM -ResourceGroupName $resourceGroup -Location $location -VM $vmConfig
+}
+
+Write-Host "VM deployment complete."
