@@ -1,1 +1,43 @@
+# Define variables
+$resourceGroup = "MyResourceGroup"
+$location = "EastUS"
+$vmName = "MyLinuxVM"
+$adminUsername = "azureuser"
+$adminPassword = "P@ssw0rd123!"  # Change this or use SSH keys
+$vmSize = "Standard_B1s"  # Small, cost-effective VM
+$image = "UbuntuLTS"  # Ubuntu 20.04 LTS
+
+# Create a resource group
+az group create --name $resourceGroup --location $location
+
+# Create a virtual network and subnet
+az network vnet create --resource-group $resourceGroup --name "MyVNet" --subnet-name "MySubnet"
+
+# Create a public IP address
+az network public-ip create --resource-group $resourceGroup --name "MyPublicIP" --sku Standard
+
+# Create a network security group (NSG) and allow SSH
+az network nsg create --resource-group $resourceGroup --name "MyNSG"
+az network nsg rule create --resource-group $resourceGroup --nsg-name "MyNSG" `
+    --name "AllowSSH" --protocol "Tcp" --priority 1000 `
+    --destination-port-range 22 --access "Allow" --direction "Inbound"
+
+# Create a network interface
+az network nic create --resource-group $resourceGroup --name "MyNIC" `
+    --vnet-name "MyVNet" --subnet "MySubnet" --public-ip-address "MyPublicIP" --network-security-group "MyNSG"
+
+# Create a Linux VM
+az vm create --resource-group $resourceGroup --name $vmName `
+    --image $image --size $vmSize --admin-username $adminUsername `
+    --admin-password $adminPassword --nics "MyNIC"
+
+# Open port 22 for SSH access
+az vm open-port --resource-group $resourceGroup --name $vmName --port 22
+
+# Get the public IP address
+$publicIP = az vm list-ip-addresses --resource-group $resourceGroup --name $vmName --query "[].virtualMachine.network.publicIpAddresses[*].ipAddress" --output tsv
+
+Write-Host "Your Linux VM ($vmName) is ready!"
+Write-Host "Public IP: $publicIP"
+Write-Host "Connect using: ssh $adminUsername@$publicIP"
 
