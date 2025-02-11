@@ -1,4 +1,4 @@
-
+#PowerShell Scripts to create Multiple VM's
 # Define Variables
 $resourceGroup = "MyResourceGroup"
 $location = "EastUS"
