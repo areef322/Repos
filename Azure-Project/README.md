@@ -99,7 +99,7 @@ This pipeline is built using the following Azure components:
 ## 👨‍💻 Author
 
 - **Areef**  
-  📧 Contact: [Mohammad Areef]  
+  📧 Contact: [areefm556@gmail.com]  
   🌐 GitHub: [areef322](https://github.com/areef322)
 
 ---
